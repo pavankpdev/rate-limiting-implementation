@@ -83,7 +83,7 @@ app.post('/auth/guest', (req: Request, res: Response) => {
   });
 });
 
-// Queue for non-rate-limited requests
+// Worker-pool + queue for demo (limited concurrency)
 interface QueuedRequest {
   userId: string;
   message: string;
@@ -93,36 +93,79 @@ interface QueuedRequest {
 }
 
 const requestQueue: QueuedRequest[] = [];
-let isProcessingQueue = false;
+// Active worker count and simple stats for /metrics
+let activeWorkers = 0;
+let totalProcessed = 0;
+let totalProcessingTime = 0;
 
-// Process queue sequentially with artificial delay
-async function processQueue() {
-  if (isProcessingQueue || requestQueue.length === 0) {
-    return;
+const concurrency = config.workerPool?.concurrency ?? 4;
+const maxQueueSize = config.workerPool?.maxQueueSize ?? 200;
+
+// Simulate processing delay (2-3 seconds) and return AI-like response
+function simulateProcessing(message: string): Promise<{ response: string }> {
+  const delay = 2000 + Math.random() * 1000;
+  return new Promise((resolve) =>
+    setTimeout(() => resolve({ response: `${message} - AI generated response` }), delay)
+  );
+}
+
+// Try to process as many queued requests as possible up to concurrency
+function processNext() {
+  while (activeWorkers < concurrency && requestQueue.length > 0) {
+    const req = requestQueue.shift()!;
+    activeWorkers++;
+
+    (async () => {
+      const start = Date.now();
+      try {
+        const result = await simulateProcessing(req.message);
+        const elapsed = Date.now() - req.timestamp;
+
+        if (elapsed >= config.request.timeoutMs) {
+          req.reject({ timeout: true });
+        } else {
+          req.resolve(result);
+        }
+      } catch (err) {
+        req.reject(err);
+      } finally {
+        totalProcessed++;
+        totalProcessingTime += Date.now() - start;
+        activeWorkers--;
+        // Continue processing next queued requests
+        processNext();
+      }
+    })();
+  }
+}
+
+// Attempt to process immediately (bypass queue). Returns a promise if started, or null if capacity full.
+function processImmediate(message: string, timestamp: number): Promise<{ response: string }> | null {
+  if (activeWorkers >= concurrency) {
+    return null;
   }
 
-  isProcessingQueue = true;
+  activeWorkers++;
+  const start = Date.now();
 
-  while (requestQueue.length > 0) {
-    const request = requestQueue.shift();
-    if (!request) break;
-
-    // Simulate processing delay (2-3 seconds)
-    const delay = 2000 + Math.random() * 1000;
-    await new Promise(resolve => setTimeout(resolve, delay));
-
-    // Check if request has timed out
-    const elapsed = Date.now() - request.timestamp;
-    if (elapsed >= config.request.timeoutMs) {
-      request.reject({ timeout: true });
-    } else {
-      request.resolve({
-        response: `${request.message} - AI generated response`
-      });
+  const p = (async () => {
+    try {
+      const result = await simulateProcessing(message);
+      const elapsed = Date.now() - timestamp;
+      if (elapsed >= config.request.timeoutMs) {
+        throw { timeout: true };
+      }
+      return result;
+    } finally {
+      totalProcessed++;
+      totalProcessingTime += Date.now() - start;
+      activeWorkers--;
     }
-  }
+  })();
 
-  isProcessingQueue = false;
+  // After finishing, kick off processing of queued items (if any)
+  p.finally(() => processNext());
+  return p;
 }
 
 // Chat endpoint WITH rate limiting
@@ -151,15 +194,30 @@ app.post('/chat/with-rate-limit', async (req: Request, res: Response) => {
       });
     }
 
-    // Process the request (instant response)
-    const response = `${message} - AI generated response`;
+    // For demo: protected endpoint attempts to process immediately.
+    // If server capacity is exhausted, reject early to avoid queueing (demonstrates protection).
+    const immediate = processImmediate(message, Date.now());
+    if (!immediate) {
+      return res.status(429).json({
+        error: 'Server overloaded - try again shortly',
+        queueLength: requestQueue.length,
+        concurrency,
+      });
+    }
+
+    const result = await immediate;
 
     res.json({
-      response,
+      response: result.response,
       remainingRequests: rateLimitResult.remainingRequests,
       resetTime: rateLimitResult.resetTime
     });
   } catch (error) {
+    if ((error as any)?.timeout) {
+      return res.status(408).json({
+        error: 'Request timeout - server could not process in time'
+      });
+    }
     console.error('Error in rate-limited chat:', error);
     res.status(500).json({
       error: 'Internal server error'
@@ -177,6 +235,13 @@ app.post('/chat/without-rate-limit', async (req: Request, res: Response) => {
     });
   }
 
+  // If queue is too large, reject early
+  if (requestQueue.length >= maxQueueSize) {
+    return res.status(503).json({
+      error: 'Server queue is full - try again later',
+    });
+  }
+
   // Create a promise that will be resolved when the request is processed
   const requestPromise = new Promise<any>((resolve, reject) => {
     requestQueue.push({
@@ -187,8 +252,8 @@ app.post('/chat/without-rate-limit', async (req: Request, res: Response) => {
       timestamp: Date.now()
     });
 
-    // Start processing the queue
-    processQueue();
+    // Try to process queued items
+    processNext();
   });
 
   // Set up timeout
@@ -214,6 +279,22 @@ app.post('/chat/without-rate-limit', async (req: Request, res: Response) => {
       });
     }
   }
+});
+
+/**
+ * Metrics endpoint for demo UI
+ * Returns active worker count, queue length, average processing latency, and some counters.
+ */
+app.get('/metrics', (req: Request, res: Response) => {
+  const avgLatencyMs = totalProcessed > 0 ? Math.round(totalProcessingTime / totalProcessed) : 0;
+  res.json({
+    activeWorkers,
+    queueLength: requestQueue.length,
+    avgLatencyMs,
+    totalProcessed,
+    concurrency,
+    maxQueueSize,
+  });
 });
 
 const startServer = async () => {

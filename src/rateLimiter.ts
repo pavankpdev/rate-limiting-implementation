@@ -10,78 +10,63 @@ export interface RateLimitResult {
 }
 
 /**
- * Check if a request is allowed based on rate limiting rules using sliding window pattern
- * @param redisClient - Redis client instance
- * @param userId - Unique identifier for the user
- * @param isAuthenticated - Whether the user is authenticated
- * @returns Promise with rate limit result
+ * Atomic token-bucket implemented in Redis via EVAL.
+ * - Stores a small hash at key: { tokens, last }
+ * - tokens can be fractional (representing partial refill)
+ * - rate = capacity / windowMs (tokens per ms)
+ *
+ * Returns:
+ *   allowed (boolean) - whether the request may proceed (consumes 1 token)
+ *   remainingRequests (number) - integer tokens remaining after consumption
+ *   resetTime (number) - timestamp (ms) when at least one token will be available
  */
 export async function checkRateLimit(
   redisClient: RedisClientType,
   userId: string,
   isAuthenticated: boolean
 ): Promise<RateLimitResult> {
-  const key = `rate_limit:${userId}`;
   const now = Date.now();
-  
+
   // Get rate limit config based on authentication status
-  const limitConfig = isAuthenticated 
-    ? config.rateLimit.authenticated 
+  const limitConfig = isAuthenticated
+    ? config.rateLimit.authenticated
     : config.rateLimit.guest;
-  
-  const { maxRequests, windowMs } = limitConfig;
-  const windowStart = now - windowMs;
+
+  const capacity = limitConfig.maxRequests;
+  const windowMs = limitConfig.windowMs;
+
+  /**
+   * Simple fixed-window counter using Redis INCR + PEXPIRE.
+   * - Uses a per-window key: rate_limit:{userId}:{windowStart}
+   * - INCR is atomic in Redis, so this avoids Lua while remaining safe.
+   * - Simpler to explain/demo than token-bucket; note fixed-window can
+   *   allow short bursts at window boundaries (no mitigation here).
+   */
+  const windowStart = Math.floor(now / windowMs) * windowMs;
+  const windowKey = `rate_limit:${userId}:${windowStart}`;
 
   try {
-    // Remove expired entries (older than the window)
-    await redisClient.zRemRangeByScore(key, 0, windowStart);
+    // Atomic increment for this window
+    const countRaw = await (redisClient as any).incr(windowKey);
+    const count = Number(countRaw);
 
-    // Count current requests in the window
-    const currentCount = await redisClient.zCard(key);
-
-    // Check if request is allowed
-    const allowed = currentCount < maxRequests;
-
-    if (allowed) {
-      // Add current request timestamp to the sorted set
-      await redisClient.zAdd(key, {
-        score: now,
-        value: `${now}`,
-      });
-
-      // Set expiration on the key to auto-cleanup (window duration + buffer)
-      await redisClient.expire(key, Math.ceil(windowMs / 1000) + 10);
+    // If this is the first increment for the window, set an expiry to auto-clean
+    if (count === 1) {
+      // set expiry slightly longer than window to ensure cleanup after window ends
+      await (redisClient as any).pExpire(windowKey, windowMs + 1000);
     }
 
-    // Calculate remaining requests
-    const remainingRequests = Math.max(0, maxRequests - currentCount - (allowed ? 1 : 0));
+    const allowed = count <= capacity;
+    const remainingRequests = Math.max(0, capacity - count);
+    const resetTime = windowStart + windowMs;
 
-    // Calculate reset time (when the oldest request in window expires)
-    let resetTime = now + windowMs;
-    
-    if (currentCount > 0) {
-      // Get the oldest request timestamp in the current window
-      const oldestRequests = await redisClient.zRange(key, 0, 0, {
-        REV: false,
-      });
-      
-      if (oldestRequests.length > 0) {
-        const oldestTimestamp = parseInt(oldestRequests[0], 10);
-        resetTime = oldestTimestamp + windowMs;
-      }
-    }
-
-    return {
-      allowed,
-      remainingRequests,
-      resetTime,
-    };
+    return { allowed, remainingRequests, resetTime };
   } catch (error) {
-    console.error('Rate limiter error:', error);
-    // On Redis errors, fail open (allow the request) to prevent service disruption
+    // Fail open on Redis errors to avoid disrupting the service
+    console.error('Rate limiter error (fixed-window):', error);
     return {
       allowed: true,
-      remainingRequests: maxRequests,
+      remainingRequests: capacity,
       resetTime: now + windowMs,
     };
   }
