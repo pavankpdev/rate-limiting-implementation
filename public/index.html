@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rate Limiting Demo - Chat Application</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <!-- Authentication Screen -->
+  <div id="auth-screen" class="min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg shadow-lg p-8 max-w-md w-full">
+      <h1 class="text-3xl font-bold text-gray-800 mb-2 text-center">Rate Limiting Demo</h1>
+      <h2 class="text-xl text-gray-600 mb-6 text-center">Chat Application</h2>
+      
+      <!-- Login Form -->
+      <div class="mb-6">
+        <h3 class="text-lg font-semibold text-gray-700 mb-3">Login</h3>
+        <form id="login-form" class="space-y-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+            <input 
+              type="text" 
+              id="username" 
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Enter username"
+            >
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <input 
+              type="password" 
+              id="password" 
+              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Enter password"
+            >
+          </div>
+          <button 
+            type="submit" 
+            class="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 transition-colors font-medium"
+          >
+            Login
+          </button>
+        </form>
+        <div class="mt-3 p-3 bg-blue-50 rounded-md">
+          <p class="text-xs text-blue-800">
+            <strong>Test credentials:</strong><br>
+            user1/pass1, user2/pass2, admin/admin123
+          </p>
+        </div>
+      </div>
+      
+      <!-- Divider -->
+      <div class="relative my-6">
+        <div class="absolute inset-0 flex items-center">
+          <div class="w-full border-t border-gray-300"></div>
+        </div>
+        <div class="relative flex justify-center text-sm">
+          <span class="px-2 bg-white text-gray-500">OR</span>
+        </div>
+      </div>
+      
+      <!-- Guest Button -->
+      <button 
+        id="guest-btn" 
+        class="w-full bg-gray-600 text-white py-2 rounded-md hover:bg-gray-700 transition-colors font-medium"
+      >
+        Continue as Guest
+      </button>
+      
+      <!-- Error Message -->
+      <div id="auth-error" class="mt-4 p-3 bg-red-50 border border-red-200 rounded-md hidden">
+        <p class="text-sm text-red-800"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chat Screen -->
+  <div id="chat-screen" class="hidden min-h-screen flex flex-col">
+    <!-- Header -->
+    <div class="bg-white shadow-md p-4">
+      <div class="max-w-4xl mx-auto flex items-center justify-between flex-wrap gap-3">
+        <div class="flex items-center gap-3">
+          <div>
+            <p class="text-sm text-gray-600">Logged in as</p>
+            <p class="font-semibold text-gray-800" id="user-display"></p>
+          </div>
+          <span id="user-type-badge" class="px-3 py-1 rounded-full text-xs font-medium"></span>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="text-right">
+            <p class="text-xs text-gray-600">Rate Limit</p>
+            <p class="text-sm font-semibold text-gray-800" id="rate-limit-info"></p>
+          </div>
+          <button 
+            id="logout-btn" 
+            class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors text-sm font-medium"
+          >
+            Logout
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Chat Area -->
+    <div class="flex-1 max-w-4xl w-full mx-auto p-4 flex flex-col">
+      <!-- Rate Limiter Toggle -->
+      <div class="bg-white rounded-lg shadow-md p-4 mb-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="font-semibold text-gray-800">Use Rate Limiter</p>
+            <p class="text-xs text-gray-600 mt-1" id="toggle-description"></p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id="rate-limiter-toggle" class="sr-only peer" checked>
+            <div class="w-14 h-7 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-blue-600"></div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Rate Limit Status -->
+      <div id="rate-limit-status" class="bg-white rounded-lg shadow-md p-4 mb-4 hidden">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm font-medium text-gray-700">Rate Limit Status</p>
+            <p class="text-xs text-gray-600 mt-1" id="remaining-requests"></p>
+          </div>
+          <div id="cooldown-timer" class="hidden">
+            <p class="text-sm font-medium text-red-600">Cooldown: <span id="cooldown-seconds"></span>s</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chat Messages -->
+      <div class="flex-1 bg-white rounded-lg shadow-md p-4 mb-4 overflow-y-auto" id="chat-messages" style="min-height: 400px; max-height: 500px;">
+        <div class="text-center text-gray-500 text-sm py-8">
+          Start a conversation by typing a message below
+        </div>
+      </div>
+
+      <!-- Message Input -->
+      <div class="bg-white rounded-lg shadow-md p-4">
+        <form id="message-form" class="flex gap-2">
+          <input 
+            type="text" 
+            id="message-input" 
+            class="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Type your message..."
+          >
+          <button 
+            type="submit" 
+            id="send-btn"
+            class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium disabled:bg-gray-400 disabled:cursor-not-allowed"
+          >
+            Send
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Application State
+    const state = {
+      userId: null,
+      isAuthenticated: false,
+      useRateLimiter: true,
+      cooldownInterval: null,
+      cooldownEndTime: null
+    };
+
+    // DOM Elements
+    const authScreen = document.getElementById('auth-screen');
+    const chatScreen = document.getElementById('chat-screen');
+    const loginForm = document.getElementById('login-form');
+    const guestBtn = document.getElementById('guest-btn');
+    const authError = document.getElementById('auth-error');
+    const userDisplay = document.getElementById('user-display');
+    const userTypeBadge = document.getElementById('user-type-badge');
+    const rateLimitInfo = document.getElementById('rate-limit-info');
+    const logoutBtn = document.getElementById('logout-btn');
+    const rateLimiterToggle = document.getElementById('rate-limiter-toggle');
+    const toggleDescription = document.getElementById('toggle-description');
+    const rateLimitStatus = document.getElementById('rate-limit-status');
+    const remainingRequests = document.getElementById('remaining-requests');
+    const cooldownTimer = document.getElementById('cooldown-timer');
+    const cooldownSeconds = document.getElementById('cooldown-seconds');
+    const chatMessages = document.getElementById('chat-messages');
+    const messageForm = document.getElementById('message-form');
+    const messageInput = document.getElementById('message-input');
+    const sendBtn = document.getElementById('send-btn');
+
+    // Utility Functions
+    function showError(message) {
+      authError.querySelector('p').textContent = message;
+      authError.classList.remove('hidden');
+      setTimeout(() => {
+        authError.classList.add('hidden');
+      }, 5000);
+    }
+
+    function formatTime(date) {
+      return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function addMessage(content, type = 'user', timestamp = new Date()) {
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `mb-4 ${type === 'user' ? 'text-right' : 'text-left'}`;
+      
+      const bubble = document.createElement('div');
+      bubble.className = `inline-block max-w-[70%] rounded-lg px-4 py-2 ${
+        type === 'user' 
+          ? 'bg-blue-600 text-white' 
+          : type === 'error' 
+          ? 'bg-red-100 text-red-800 border border-red-300'
+          : 'bg-gray-200 text-gray-800'
+      }`;
+      
+      const text = document.createElement('p');
+      text.className = 'text-sm break-words';
+      text.textContent = content;
+      
+      const time = document.createElement('p');
+      time.className = `text-xs mt-1 ${type === 'user' ? 'text-blue-100' : type === 'error' ? 'text-red-600' : 'text-gray-600'}`;
+      time.textContent = formatTime(timestamp);
+      
+      bubble.appendChild(text);
+      bubble.appendChild(time);
+      messageDiv.appendChild(bubble);
+      
+      // Remove welcome message if exists
+      const welcomeMsg = chatMessages.querySelector('.text-center');
+      if (welcomeMsg) {
+        welcomeMsg.remove();
+      }
+      
+      chatMessages.appendChild(messageDiv);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function updateRateLimitDisplay(remaining, resetTime) {
+      if (state.useRateLimiter) {
+        rateLimitStatus.classList.remove('hidden');
+        remainingRequests.textContent = `Remaining requests: ${remaining}`;
+        
+        if (remaining === 0 && resetTime) {
+          startCooldownTimer(resetTime);
+        } else {
+          stopCooldownTimer();
+        }
+      }
+    }
+
+    function startCooldownTimer(resetTime) {
+      state.cooldownEndTime = resetTime;
+      cooldownTimer.classList.remove('hidden');
+      sendBtn.disabled = true;
+      
+      if (state.cooldownInterval) {
+        clearInterval(state.cooldownInterval);
+      }
+      
+      state.cooldownInterval = setInterval(() => {
+        const remaining = Math.ceil((state.cooldownEndTime - Date.now()) / 1000);
+        if (remaining <= 0) {
+          stopCooldownTimer();
+        } else {
+          cooldownSeconds.textContent = remaining;
+        }
+      }, 100);
+    }
+
+    function stopCooldownTimer() {
+      if (state.cooldownInterval) {
+        clearInterval(state.cooldownInterval);
+        state.cooldownInterval = null;
+      }
+      cooldownTimer.classList.add('hidden');
+      sendBtn.disabled = false;
+      state.cooldownEndTime = null;
+    }
+
+    function updateUI() {
+      userDisplay.textContent = state.userId;
+      
+      if (state.isAuthenticated) {
+        userTypeBadge.textContent = 'Authenticated';
+        userTypeBadge.className = 'px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800';
+        rateLimitInfo.textContent = '8 req/min';
+      } else {
+        userTypeBadge.textContent = 'Guest';
+        userTypeBadge.className = 'px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800';
+        rateLimitInfo.textContent = '2 req/min';
+      }
+      
+      updateToggleDescription();
+    }
+
+    function updateToggleDescription() {
+      if (state.useRateLimiter) {
+        toggleDescription.textContent = 'Protected endpoint - Fast responses with rate limiting';
+        rateLimitStatus.classList.remove('hidden');
+      } else {
+        toggleDescription.textContent = 'Unprotected endpoint - May timeout under load';
+        rateLimitStatus.classList.add('hidden');
+        stopCooldownTimer();
+      }
+    }
+
+    function clearChat() {
+      chatMessages.innerHTML = '<div class="text-center text-gray-500 text-sm py-8">Start a conversation by typing a message below</div>';
+    }
+
+    // Authentication Functions
+    async function handleLogin(e) {
+      e.preventDefault();
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value.trim();
+      
+      if (!username || !password) {
+        showError('Please enter both username and password');
+        return;
+      }
+      
+      try {
+        const response = await fetch('http://localhost:3000/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          state.userId = data.userId;
+          state.isAuthenticated = data.isAuthenticated;
+          switchToChat();
+        } else {
+          showError(data.error || 'Login failed');
+        }
+      } catch (error) {
+        showError('Connection error. Please ensure the server is running.');
+      }
+    }
+
+    async function handleGuest() {
+      try {
+        const response = await fetch('http://localhost:3000/auth/guest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          state.userId = data.userId;
+          state.isAuthenticated = data.isAuthenticated;
+          switchToChat();
+        }
+      } catch (error) {
+        showError('Connection error. Please ensure the server is running.');
+      }
+    }
+
+    function switchToChat() {
+      authScreen.classList.add('hidden');
+      chatScreen.classList.remove('hidden');
+      updateUI();
+      messageInput.focus();
+    }
+
+    function handleLogout() {
+      state.userId = null;
+      state.isAuthenticated = false;
+      stopCooldownTimer();
+      clearChat();
+      chatScreen.classList.add('hidden');
+      authScreen.classList.remove('hidden');
+      document.getElementById('username').value = '';
+      document.getElementById('password').value = '';
+    }
+
+    // Chat Functions
+    async function handleSendMessage(e) {
+      e.preventDefault();
+      
+      const message = messageInput.value.trim();
+      if (!message) return;
+      
+      // Disable send button while processing
+      sendBtn.disabled = true;
+      messageInput.disabled = true;
+      
+      // Add user message
+      addMessage(message, 'user');
+      messageInput.value = '';
+      
+      const endpoint = state.useRateLimiter 
+        ? 'http://localhost:3000/chat/with-rate-limit'
+        : 'http://localhost:3000/chat/without-rate-limit';
+      
+      const body = state.useRateLimiter
+        ? { userId: state.userId, isAuthenticated: state.isAuthenticated, message }
+        : { userId: state.userId, message };
+      
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          // Success - add AI response
+          addMessage(data.response, 'ai');
+          
+          // Update rate limit info if using rate limiter
+          if (state.useRateLimiter && data.remainingRequests !== undefined) {
+            updateRateLimitDisplay(data.remainingRequests, data.resetTime);
+          }
+        } else if (response.status === 429) {
+          // Rate limit exceeded
+          addMessage(data.error, 'error');
+          updateRateLimitDisplay(0, data.resetTime);
+        } else if (response.status === 408) {
+          // Timeout
+          addMessage('Request timeout - The server is overloaded and could not process your request in time. Try using the rate-limited endpoint instead.', 'error');
+        } else {
+          // Other errors
+          addMessage(data.error || 'An error occurred', 'error');
+        }
+      } catch (error) {
+        addMessage('Connection error. Please check if the server is running.', 'error');
+      } finally {
+        // Re-enable send button if not in cooldown
+        if (!state.cooldownEndTime || Date.now() >= state.cooldownEndTime) {
+          sendBtn.disabled = false;
+        }
+        messageInput.disabled = false;
+        messageInput.focus();
+      }
+    }
+
+    // Event Listeners
+    loginForm.addEventListener('submit', handleLogin);
+    guestBtn.addEventListener('click', handleGuest);
+    logoutBtn.addEventListener('click', handleLogout);
+    messageForm.addEventListener('submit', handleSendMessage);
+    
+    rateLimiterToggle.addEventListener('change', (e) => {
+      state.useRateLimiter = e.target.checked;
+      updateToggleDescription();
+    });
+
+    // Initialize
+    updateToggleDescription();
+  </script>
+</body>
+</html>
