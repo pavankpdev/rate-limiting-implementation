@@ -1,10 +1,10 @@
 {
-  "name": "rate-limiting",
+  "name": "rate-limiting-demo",
   "version": "1.0.0",
   "description": "Rate limiting demo application with Redis, Express.js, and modern web interface",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "ts-node src/server.ts",
+    "dev": "ts-node-dev src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -14,16 +14,16 @@
   "license": "ISC",
   "packageManager": "pnpm@10.11.0",
   "dependencies": {
-    "@types/axios": "^0.14.4",
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.3",
-    "axios": "^1.12.2",
-    "cli-table3": "^0.6.5",
-    "cors": "^2.8.5",
-    "dotenv": "^17.2.2",
     "express": "^5.1.0",
     "redis": "^5.8.3",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.9.2"
+    "dotenv": "^17.2.2",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^22.0.0",
+    "@types/cors": "^2.8.19",
+    "typescript": "^5.9.2",
+    "ts-node-dev": "^2.0.0"
   }
 }

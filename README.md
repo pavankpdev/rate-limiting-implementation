@@ -1,218 +1,169 @@
-# Rate Limiting Demo - Chat Application
+# Rate Limiting Demo
 
-A comprehensive demonstration of rate limiting implementation using Redis, Express.js, and a modern web interface. This project showcases the difference between rate-limited and non-rate-limited endpoints, highlighting the importance of rate limiting in preventing server overload.
+A minimal demonstration project showcasing Redis-based rate limiting with a TypeScript Express server and interactive frontend chat interface.
 
-## 🌟 Features
+## Features
 
-- **Dual Authentication System**
-  - Authenticated users (8 requests/minute)
-  - Guest users (2 requests/minute)
-  
-- **Two Chat Endpoints**
-  - **With Rate Limiting**: Fast, instant responses with request limits
-  - **Without Rate Limiting**: Queued processing with potential timeouts
-  
-- **Real-time Rate Limit Tracking**
-  - Visual remaining request counter
-  - Cooldown timer when limit exceeded
-  - Automatic reset after window expires
-  
-- **Modern UI**
-  - Clean, responsive design with Tailwind CSS
-  - Real-time status updates
-  - Message history with timestamps
+- Token bucket rate limiting algorithm with automatic refill
+- Redis-backed state persistence
+- Multiple user tiers with different rate limits
+- Real-time rate limit status display
+- Interactive chat interface for testing
+- Toggle rate limiting on/off for comparison
+- RESTful API with proper HTTP headers
 
-## 📋 Prerequisites
+## Tech Stack
 
-Before running this application, ensure you have:
+- **Backend**: TypeScript, Express.js, Redis
+- **Frontend**: Vanilla JavaScript, HTML5, CSS3
+- **Package Manager**: pnpm
+- **Development**: ts-node-dev for hot reloading
 
-- **Node.js** (v16 or higher)
-- **Redis** (v6 or higher)
-- **pnpm** (v8 or higher) - or npm/yarn
+## Prerequisites
 
-## 🚀 Installation
+- Node.js (v18 or higher)
+- Redis server (local or cloud-hosted)
+- pnpm (recommended) or npm
 
-1. **Clone the repository** (or navigate to the project directory)
-   ```bash
-   cd rate-limiting
-   ```
+## Installation
 
-2. **Install dependencies**
-   ```bash
-   pnpm install
-   ```
+Clone the repository and install dependencies:
 
-3. **Ensure Redis is installed**
-   
-   **macOS (using Homebrew):**
-   ```bash
-   brew install redis
-   ```
-   
-   **Ubuntu/Debian:**
-   ```bash
-   sudo apt-get install redis-server
-   ```
-   
-   **Windows:**
-   - Download from [Redis Windows](https://github.com/microsoftarchive/redis/releases)
-   - Or use WSL with the Ubuntu instructions
-
-## 🏃 Running the Application
-
-### Step 1: Start Redis Server
-
-**macOS/Linux:**
 ```bash
-redis-server
+pnpm install
 ```
 
-**Windows:**
+Or using npm:
+
 ```bash
-redis-server.exe
+npm install
 ```
 
-You should see output indicating Redis is running on port 6379.
+## Environment Setup
 
-### Step 2: Start the Application Server
+Create a `.env` file in the project root:
 
-In a new terminal window:
+```bash
+cp .env.example .env
+```
+
+Configure the following variables in `.env`:
+
+```
+PORT=3000
+REDIS_URL=your_redis_connection_url
+```
+
+For local Redis, use:
+```
+REDIS_URL=redis://localhost:6379
+```
+
+For cloud Redis (e.g., Upstash), use the provided connection URL.
+
+## Running the Project
+
+### Development Mode
+
+Start the server with hot reloading:
 
 ```bash
 pnpm dev
 ```
 
-The server will start on `http://localhost:3000`
+### Production Mode
 
-### Step 3: Open the Application
+Build and run the compiled JavaScript:
 
-Open your browser and navigate to:
+```bash
+pnpm build
+pnpm start
 ```
-http://localhost:3000
+
+The application will be available at `http://localhost:3000`
+
+## Project Structure
+
+```
+rate-limiting-demo/
+├── src/
+│   ├── server.ts          Main Express server with API endpoints
+│   ├── redisClient.ts     Redis client configuration
+│   └── tiers.ts           User tier definitions and rate limits
+├── public/
+│   ├── index.html         Frontend chat interface
+│   ├── script.js          Client-side logic and API calls
+│   └── style.css          Styling and animations
+├── package.json           Project dependencies and scripts
+├── tsconfig.json          TypeScript configuration
+├── .env.example           Environment variables template
+└── .gitignore             Git ignore rules
 ```
 
-## 🎮 How to Use
+## API Endpoints
 
-### Authentication
+### GET /users
 
-1. **Login as Authenticated User**
-   - Use one of these test credentials:
-     - `user1` / `pass1`
-     - `user2` / `pass2`
-     - `admin` / `admin123`
-   - Authenticated users get **8 requests per minute**
+Returns the list of available users with their tiers.
 
-2. **Continue as Guest**
-   - Click "Continue as Guest" button
-   - Guest users get **2 requests per minute**
+**Response:**
+```json
+[
+  { "id": 1, "name": "Alice", "tier": "Free" },
+  { "id": 2, "name": "Bob", "tier": "Silver" },
+  { "id": 3, "name": "Charlie", "tier": "Gold" },
+  { "id": 4, "name": "David", "tier": "Platinum" }
+]
+```
 
-### Testing Rate Limiting
+### GET /status
 
-#### Scenario 1: Rate Limiting in Action (Recommended First Test)
+Returns the current rate limiting status and Redis connection state.
 
-1. Login or continue as guest
-2. Ensure "Use Rate Limiter" toggle is **ON** (blue)
-3. Send multiple messages quickly:
-   - **Guest users**: Send 3+ messages rapidly
-   - **Authenticated users**: Send 9+ messages rapidly
-4. Observe:
-   - First 2 (guest) or 8 (authenticated) messages get instant responses
-   - Additional messages show "Rate limit exceeded" error
-   - Cooldown timer appears showing seconds until reset
-   - Send button is disabled during cooldown
-   - After cooldown expires, you can send messages again
-
-#### Scenario 2: Without Rate Limiting (Timeout Behavior)
-
-1. Toggle "Use Rate Limiter" to **OFF** (gray)
-2. Send multiple messages quickly (5-10 messages)
-3. Observe:
-   - Messages are queued for processing
-   - Each message takes 2-3 seconds to process
-   - If queue is too long, requests timeout after 20 seconds
-   - Error message: "Request timeout - server could not process in time"
-   - This demonstrates why rate limiting is important!
-
-#### Scenario 3: Comparing User Types
-
-1. Login as authenticated user
-2. Send 8 messages quickly with rate limiter ON
-3. Logout and continue as guest
-4. Send 2 messages quickly with rate limiter ON
-5. Compare the different rate limits
-
-### Toggle Between Endpoints
-
-- **Rate Limiter ON** (Blue Toggle)
-  - Uses `/chat/with-rate-limit` endpoint
-  - Instant responses
-  - Protected by rate limits
-  - Shows remaining requests
-  - Cooldown timer when limit exceeded
-
-- **Rate Limiter OFF** (Gray Toggle)
-  - Uses `/chat/without-rate-limit` endpoint
-  - Queued processing (2-3 seconds per message)
-  - No rate limits
-  - Can timeout under heavy load (20 second timeout)
-  - Demonstrates server overload scenario
-
-## 📡 API Endpoints
-
-### Authentication
-
-#### POST `/auth/login`
-Login with username and password.
-
-**Request:**
+**Response:**
 ```json
 {
-  "username": "user1",
-  "password": "pass1"
+  "rateLimitingEnabled": true,
+  "redis": "connected"
+}
+```
+
+### POST /toggle-rate-limit
+
+Toggles rate limiting on or off.
+
+**Request Body:**
+```json
+{
+  "enabled": true
 }
 ```
 
 **Response:**
 ```json
 {
-  "success": true,
-  "userId": "user1",
-  "isAuthenticated": true
+  "rateLimitingEnabled": true
 }
 ```
 
-#### POST `/auth/guest`
-Generate a guest user ID.
+### POST /chat
 
-**Response:**
+Sends a chat message with rate limiting applied.
+
+**Request Body:**
 ```json
 {
-  "success": true,
-  "userId": "guest_1234567890_5678",
-  "isAuthenticated": false
-}
-```
-
-### Chat
-
-#### POST `/chat/with-rate-limit`
-Send a message with rate limiting protection.
-
-**Request:**
-```json
-{
-  "userId": "user1",
-  "isAuthenticated": true,
-  "message": "Hello!"
+  "userId": 1,
+  "message": "Hello, world!"
 }
 ```
 
 **Success Response (200):**
 ```json
 {
-  "response": "Hello! - AI generated response",
-  "remainingRequests": 7,
-  "resetTime": 1234567890000
+  "user": "Alice",
+  "message": "Hello, world!",
+  "response": "Simulated AI reply: Hello, world!"
 }
 ```
 
@@ -220,236 +171,58 @@ Send a message with rate limiting protection.
 ```json
 {
   "error": "Rate limit exceeded",
-  "remainingRequests": 0,
-  "resetTime": 1234567890000,
-  "cooldownSeconds": 45
+  "limit": 2,
+  "remaining": 0,
+  "retryAfter": 30
 }
 ```
 
-#### POST `/chat/without-rate-limit`
-Send a message without rate limiting (queued processing).
+**Response Headers:**
+- `X-RateLimit-Limit`: Maximum requests per minute
+- `X-RateLimit-Remaining`: Remaining requests available
+- `Retry-After`: Seconds until next request allowed (on 429 only)
 
-**Request:**
-```json
-{
-  "userId": "user1",
-  "message": "Hello!"
-}
-```
+## User Tiers and Rate Limits
 
-**Success Response (200):**
-```json
-{
-  "response": "Hello! - AI generated response"
-}
-```
+| Tier     | Requests per Minute | Example User |
+|----------|---------------------|--------------|
+| Free     | 2                   | Alice        |
+| Silver   | 5                   | Bob          |
+| Gold     | 10                  | Charlie      |
+| Platinum | 15                  | David        |
 
-**Timeout Response (408):**
-```json
-{
-  "error": "Request timeout - server could not process in time"
-}
-```
+## Testing Instructions
 
-### Health Check
+1. Start the server and open `http://localhost:3000` in your browser
+2. Select a user from the dropdown menu
+3. Type a message and click "Send Message"
+4. Observe the rate limit counter decreasing with each request
+5. Try sending messages rapidly to trigger rate limiting
+6. Watch the automatic token refill over time
+7. Toggle rate limiting off to see unlimited requests
+8. Switch between users to test different tier limits
 
-#### GET `/health`
-Check server and Redis connection status.
+## How Rate Limiting Works
 
-**Response:**
-```json
-{
-  "status": "ok",
-  "redis": "connected",
-  "timestamp": "2024-01-01T12:00:00.000Z"
-}
-```
+This project implements a **token bucket algorithm** with the following characteristics:
 
-## ⚙️ Configuration
+**Token Bucket Algorithm:**
+- Each user has a bucket with a maximum capacity based on their tier
+- Tokens refill continuously at a rate of `limit / 60` tokens per second
+- Each request consumes 1 token
+- Requests are blocked when no tokens are available
+- Partial tokens accumulate for smooth refilling
 
-Configuration is managed in [`src/config.ts`](src/config.ts):
+**Implementation Details:**
+- State is stored in Redis with keys formatted as `rate:{userId}`
+- Each entry contains current token count and last refill timestamp
+- Tokens refill based on elapsed time since last request
+- Maximum tokens never exceed the tier limit
+- When rate limited, the response includes `Retry-After` header
 
-```typescript
-export const config = {
-  rateLimit: {
-    guest: {
-      maxRequests: 2,        // Max requests per window
-      windowMs: 60000,       // 1 minute window
-    },
-    authenticated: {
-      maxRequests: 8,        // Max requests per window
-      windowMs: 60000,       // 1 minute window
-    },
-  },
-  request: {
-    timeoutMs: 20000,        // 20 second timeout for non-rate-limited requests
-  },
-  redis: {
-    host: 'localhost',
-    port: 6379,
-  },
-  server: {
-    port: 3000,
-  },
-};
-```
+**Example:**
+- Free tier user (2 requests/minute) gets 0.033 tokens per second
+- After 30 seconds of inactivity, they have 1 full token available
+- Tokens accumulate up to the maximum of 2
 
-### Customization Options
-
-- **Rate Limits**: Adjust `maxRequests` and `windowMs` for different user types
-- **Timeout**: Change `timeoutMs` for non-rate-limited endpoint behavior
-- **Redis**: Configure connection settings if using remote Redis
-- **Server Port**: Change the port if 3000 is already in use
-
-## 📁 Project Structure
-
-```
-rate-limiting/
-├── src/
-│   ├── server.ts          # Express server setup and endpoints
-│   ├── rateLimiter.ts     # Redis-based rate limiting logic
-│   ├── auth.ts            # Authentication and user management
-│   └── config.ts          # Application configuration
-├── public/
-│   └── index.html         # Frontend UI (Tailwind CSS)
-├── package.json           # Dependencies and scripts
-├── tsconfig.json          # TypeScript configuration
-└── README.md             # This file
-```
-
-### Key Components
-
-- **[`src/server.ts`](src/server.ts:1)**: Main Express server with chat endpoints
-- **[`src/rateLimiter.ts`](src/rateLimiter.ts:1)**: Sliding window rate limiter using Redis sorted sets
-- **[`src/auth.ts`](src/auth.ts:1)**: Simple authentication with in-memory user store
-- **[`src/config.ts`](src/config.ts:1)**: Centralized configuration
-- **[`public/index.html`](public/index.html:1)**: Interactive chat UI with real-time updates
-
-## 🔧 Development Scripts
-
-```bash
-# Start development server with auto-reload
-pnpm dev
-
-# Build TypeScript to JavaScript
-pnpm build
-
-# Run production server (after build)
-pnpm start
-```
-
-## 🧪 Testing Scenarios
-
-### Test 1: Basic Rate Limiting
-1. Login as guest (2 req/min limit)
-2. Send 3 messages quickly
-3. Verify: First 2 succeed, 3rd shows rate limit error
-
-### Test 2: Cooldown Timer
-1. Trigger rate limit (send too many messages)
-2. Observe cooldown timer counting down
-3. Wait for timer to reach 0
-4. Verify: Can send messages again
-
-### Test 3: Authenticated vs Guest
-1. Login as authenticated user
-2. Send 8 messages (should all succeed)
-3. Logout and continue as guest
-4. Send 8 messages (only 2 should succeed)
-
-### Test 4: Timeout Without Rate Limiting
-1. Toggle rate limiter OFF
-2. Send 10 messages rapidly
-3. Observe: Some messages timeout after 20 seconds
-4. Toggle rate limiter ON
-5. Send 10 messages rapidly
-6. Observe: Instant responses until rate limit hit
-
-### Test 5: Multiple Users
-1. Open app in two browser windows
-2. Login as different users in each
-3. Send messages from both
-4. Verify: Each user has independent rate limits
-
-## 🛠️ Troubleshooting
-
-### Redis Connection Error
-**Error:** `Redis connection error: ECONNREFUSED`
-
-**Solution:**
-1. Ensure Redis is running: `redis-server`
-2. Check Redis is on port 6379: `redis-cli ping` (should return "PONG")
-3. Verify config in [`src/config.ts`](src/config.ts:15)
-
-### Port Already in Use
-**Error:** `EADDRINUSE: address already in use :::3000`
-
-**Solution:**
-1. Change port in [`src/config.ts`](src/config.ts:20)
-2. Or kill process using port 3000:
-   ```bash
-   # macOS/Linux
-   lsof -ti:3000 | xargs kill -9
-   
-   # Windows
-   netstat -ano | findstr :3000
-   taskkill /PID <PID> /F
-   ```
-
-### TypeScript Errors
-**Error:** Module not found or type errors
-
-**Solution:**
-```bash
-# Reinstall dependencies
-rm -rf node_modules pnpm-lock.yaml
-pnpm install
-
-# Rebuild TypeScript
-pnpm build
-```
-
-## 📚 Learning Points
-
-This demo illustrates:
-
-1. **Rate Limiting Benefits**
-   - Prevents server overload
-   - Ensures fair resource distribution
-   - Protects against abuse
-
-2. **Sliding Window Algorithm**
-   - More accurate than fixed windows
-   - Uses Redis sorted sets for efficiency
-   - Automatic cleanup of old entries
-
-3. **User Tier Management**
-   - Different limits for different user types
-   - Easy to extend for more tiers (premium, enterprise, etc.)
-
-4. **Graceful Degradation**
-   - Clear error messages when limits exceeded
-   - Cooldown timers for better UX
-   - Fallback behavior on Redis errors
-
-## 🤝 Contributing
-
-Feel free to experiment with:
-- Different rate limiting strategies
-- Additional user tiers
-- Enhanced UI features
-- Performance optimizations
-
-## 📝 License
-
-ISC
-
----
-
-**Quick Start Summary:**
-1. Start Redis: `redis-server`
-2. Install deps: `pnpm install`
-3. Start server: `pnpm dev`
-4. Open browser: `http://localhost:3000`
-5. Test with guest (2 req/min) or login (8 req/min)
-6. Toggle rate limiter ON/OFF to see the difference!
+This approach provides smooth, predictable rate limiting without sudden resets.
